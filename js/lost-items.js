@@ -108,12 +108,22 @@ async function displayItems() {
 
 // ===============================
 // MARK AS FOUND (Supabase)
+// FIX: added error handling — previously errors were silently swallowed,
+// causing stale UI (item still showing as "active") with no user feedback.
 // ===============================
-function markAsFound(id) {
+async function markAsFound(id) {
   if (!supabase) return;
-  supabase.from("lost_items").update({ status: "found" }).eq("id", id).eq("user_id", currentUser.id).then(function () {
-    displayItems();
-  });
+  var { error } = await supabase
+    .from("lost_items")
+    .update({ status: "found" })
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("Could not update status: " + error.message);
+    return;
+  }
+  displayItems();
 }
 
 // ===============================

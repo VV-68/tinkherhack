@@ -1,5 +1,11 @@
 // ===============================
 // SESSION CHECK
+// FIX: everything is now inside an async init() function that waits for
+// supabase.auth.getSession() to resolve BEFORE running any UI or tab logic.
+// Previously getSession() was a fire-and-forget .then() — the rest of the
+// page (showTab, delete buttons) ran immediately without waiting, so on a
+// refresh or expired session, RLS blocked deletes silently because Supabase
+// saw the user as unauthenticated even though localStorage still had the user.
 // ===============================
 var supabase = window.supabaseClient;
 var currentUser = JSON.parse(localStorage.getItem("currentUser"));
@@ -8,32 +14,38 @@ if (!currentUser) {
   window.location.href = "index.html";
 }
 
-// Ensure Supabase session exists (required for RLS on delete/update)
-if (supabase) {
-  supabase.auth.getSession().then(function (_ref) {
+async function init() {
+  if (supabase) {
+    var _ref = await supabase.auth.getSession();
     var session = _ref.data.session;
     if (!session) {
       localStorage.removeItem("currentUser");
       window.location.href = "index.html";
+      return;
     }
-  });
-}
+  }
 
-var logoutBtn = document.getElementById("logoutBtn");
-if (logoutBtn) {
-  logoutBtn.addEventListener("click", async function () {
-    if (supabase) await supabase.auth.signOut();
-    localStorage.removeItem("currentUser");
-    window.location.href = "index.html";
-  });
-}
+  var logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async function () {
+      if (supabase) await supabase.auth.signOut();
+      localStorage.removeItem("currentUser");
+      window.location.href = "index.html";
+    });
+  }
 
-// ===============================
-// USER INFO
-// ===============================
-var userInfo = document.getElementById("userInfo");
-if (userInfo) {
-  userInfo.innerHTML = "<h3>" + currentUser.name + "</h3><p>Email: " + currentUser.email + "</p><p>Roll No: " + (currentUser.roll || "") + "</p>";
+  // ===============================
+  // USER INFO
+  // ===============================
+  var userInfo = document.getElementById("userInfo");
+  if (userInfo) {
+    userInfo.innerHTML = "<h3>" + currentUser.name + "</h3><p>Email: " + currentUser.email + "</p><p>Roll No: " + (currentUser.roll || "") + "</p>";
+  }
+
+  // ===============================
+  // DEFAULT TAB
+  // ===============================
+  showTab("lost");
 }
 
 // ===============================
@@ -80,11 +92,19 @@ async function showLostItems() {
   });
 }
 
-function deleteLost(id) {
+async function deleteLost(id) {
   if (!supabase) return;
-  supabase.from("lost_items").delete().eq("id", id).eq("user_id", currentUser.id).then(function () {
-    showLostItems();
-  });
+  var { error } = await supabase
+    .from("lost_items")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+
+  if (error) {
+    alert("Could not delete item: " + error.message);
+    return;
+  }
+  showLostItems();
 }
 
 // ===============================
@@ -182,11 +202,18 @@ async function viewItemRequests(foundItemId) {
   });
 }
 
-function updateRequest(id, status) {
+async function updateRequest(id, status) {
   if (!supabase) return;
-  supabase.from("requests").update({ status: status }).eq("id", id).then(function () {
-    showTab("found");
-  });
+  var { error } = await supabase
+    .from("requests")
+    .update({ status: status })
+    .eq("id", id);
+
+  if (error) {
+    alert("Could not update request: " + error.message);
+    return;
+  }
+  showTab("found");
 }
 
 // ===============================
@@ -222,6 +249,6 @@ async function showRequests() {
 }
 
 // ===============================
-// DEFAULT TAB
+// START
 // ===============================
-showTab("lost");
+init();

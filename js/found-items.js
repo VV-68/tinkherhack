@@ -65,9 +65,14 @@ form.addEventListener("submit", async function (e) {
   var imagePaths = [];
   if (files && files.length > 0) {
     var basePath = currentUser.id + "/" + newItem.id + "/";
+    // FIX: capture timestamp once outside the loop.
+    // Previously Date.now() was called inside the loop — on fast async uploads
+    // multiple files could get the same timestamp, causing filename collisions
+    // and silent overwrites in Supabase Storage.
+    var uploadTimestamp = Date.now();
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
-      var fileName = basePath + Date.now() + "_" + i + "_" + (file.name || "img");
+      var fileName = basePath + uploadTimestamp + "_" + i + "_" + (file.name || "img");
       var { error: uploadError } = await supabase.storage.from("found-images").upload(fileName, file, { upsert: true });
       if (!uploadError) {
         imagePaths.push(fileName);
